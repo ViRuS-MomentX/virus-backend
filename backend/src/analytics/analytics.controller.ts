@@ -9,7 +9,7 @@ function resolveDeviceType(deviceType: string | undefined): string {
   return 'Desktop'; // ua-parser-js doesn't set deviceType for desktop UAs
 }
 
-@Controller('analytics')
+@Controller('api/analytics')
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
