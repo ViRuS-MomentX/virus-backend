@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { neon } from '@neondatabase/serverless';
 
 export interface VisitInput {
+  ip: string | null;
   country: string | null;
   region: string | null;
   city: string | null;
@@ -14,6 +15,7 @@ export interface VisitInput {
 export interface Visit {
   id: number;
   visited_at: string;
+  ip: string | null;
   country: string | null;
   region: string | null;
   city: string | null;
@@ -29,8 +31,8 @@ export class AnalyticsService {
 
   async createVisit(input: VisitInput): Promise<Visit> {
     const rows = await this.sql`
-      INSERT INTO visits (country, region, city, device, os, browser, page)
-      VALUES (${input.country}, ${input.region}, ${input.city}, ${input.device}, ${input.os}, ${input.browser}, ${input.page})
+      INSERT INTO visits (ip, country, region, city, device, os, browser, page)
+      VALUES (${input.ip}, ${input.country}, ${input.region}, ${input.city}, ${input.device}, ${input.os}, ${input.browser}, ${input.page})
       RETURNING *
     `;
     return rows[0] as Visit;

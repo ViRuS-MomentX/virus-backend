@@ -5,8 +5,10 @@ import {
   Headers,
   Post,
   Query,
+  Req,
   UnauthorizedException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { UAParser } from 'ua-parser-js';
 import { AnalyticsService } from './analytics.service';
 import { CreateVisitDto } from './dto/create-visit.dto';
@@ -17,6 +19,19 @@ function resolveDeviceType(deviceType: string | undefined): string {
   return 'Desktop'; // ua-parser-js doesn't set deviceType for desktop UAs
 }
 
+function resolveIp(
+  forwardedFor: string | undefined,
+  realIp: string | undefined,
+  req: Request,
+): string | null {
+  if (forwardedFor) {
+    // x-forwarded-for may contain a comma-separated list; the first entry is the client
+    return forwardedFor.split(',')[0].trim();
+  }
+  if (realIp) return realIp;
+  return req.socket?.remoteAddress ?? null;
+}
+
 @Controller('api/analytics')
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
@@ -24,10 +39,13 @@ export class AnalyticsController {
   @Post('visit')
   async trackVisit(
     @Body() body: CreateVisitDto,
+    @Req() req: Request,
     @Headers('user-agent') userAgent: string | undefined,
     @Headers('x-vercel-ip-country') vercelCountry: string | undefined,
     @Headers('x-vercel-ip-country-region') vercelRegion: string | undefined,
     @Headers('x-vercel-ip-city') vercelCity: string | undefined,
+    @Headers('x-forwarded-for') forwardedFor: string | undefined,
+    @Headers('x-real-ip') realIp: string | undefined,
   ) {
     const parser = new UAParser(userAgent ?? '');
     const os = parser.getOS();
@@ -39,6 +57,7 @@ export class AnalyticsController {
       [browser.name, browser.version?.split('.')[0]].filter(Boolean).join(' ') || null;
 
     const visit = await this.analyticsService.createVisit({
+      ip: resolveIp(forwardedFor, realIp, req),
       country: vercelCountry ? decodeURIComponent(vercelCountry) : null,
       region: vercelRegion ? decodeURIComponent(vercelRegion) : null,
       city: vercelCity ? decodeURIComponent(vercelCity) : null,
