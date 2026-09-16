@@ -9,6 +9,8 @@ export interface VisitInput {
   device: string | null;
   os: string | null;
   browser: string | null;
+  lang: string | null;
+  source: string | null;
   page: string;
 }
 
@@ -22,6 +24,8 @@ export interface Visit {
   device: string | null;
   os: string | null;
   browser: string | null;
+  lang: string | null;
+  source: string | null;
   page: string;
 }
 
@@ -31,8 +35,8 @@ export class AnalyticsService {
 
   async createVisit(input: VisitInput): Promise<Visit> {
     const rows = await this.sql`
-      INSERT INTO visits (ip, country, region, city, device, os, browser, page)
-      VALUES (${input.ip}, ${input.country}, ${input.region}, ${input.city}, ${input.device}, ${input.os}, ${input.browser}, ${input.page})
+      INSERT INTO visits (ip, country, region, city, device, os, browser, lang, source, page)
+      VALUES (${input.ip}, ${input.country}, ${input.region}, ${input.city}, ${input.device}, ${input.os}, ${input.browser}, ${input.lang}, ${input.source}, ${input.page})
       RETURNING *
     `;
     return rows[0] as Visit;

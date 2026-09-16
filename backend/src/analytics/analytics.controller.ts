@@ -19,6 +19,29 @@ function resolveDeviceType(deviceType: string | undefined): string {
   return 'Desktop'; // ua-parser-js doesn't set deviceType for desktop UAs
 }
 
+// Источник перехода. Метка из ссылки (?ref=tg) и реферер сводятся к
+// понятным названиям. Из приложений Telegram/Discord реферер часто пустой,
+// поэтому явная метка в ссылке — самый надёжный сигнал.
+function resolveSource(referrer: string | undefined): string {
+  const r = (referrer ?? '').trim().toLowerCase();
+  if (!r) return 'Прямой';
+  if (['tg', 'telegram', 't.me'].some((k) => r.includes(k))) return 'Telegram';
+  if (['dc', 'discord'].some((k) => r.includes(k))) return 'Discord';
+  if (r.includes('youtu')) return 'YouTube';
+  if (r.includes('tiktok')) return 'TikTok';
+  if (r.includes('github')) return 'GitHub';
+  if (r.includes('google')) return 'Google';
+  if (r.includes('yandex')) return 'Яндекс';
+  if (r === 'vk' || r.includes('vk.com')) return 'VK';
+  return r; // незнакомый источник сохраняем как есть
+}
+
+// Язык сводим к основному тегу: "ru-RU" → "ru", "pt-BR" → "pt".
+function resolveLang(lang: string | undefined): string | null {
+  const primary = (lang ?? '').trim().toLowerCase().split(/[-_]/)[0];
+  return /^[a-z]{2,3}$/.test(primary) ? primary : null;
+}
+
 function resolveIp(
   forwardedFor: string | undefined,
   realIp: string | undefined,
@@ -46,6 +69,7 @@ export class AnalyticsController {
     @Headers('x-vercel-ip-city') vercelCity: string | undefined,
     @Headers('x-forwarded-for') forwardedFor: string | undefined,
     @Headers('x-real-ip') realIp: string | undefined,
+    @Headers('accept-language') acceptLang: string | undefined,
   ) {
     const parser = new UAParser(userAgent ?? '');
     const os = parser.getOS();
@@ -64,6 +88,9 @@ export class AnalyticsController {
       device: resolveDeviceType(device.type),
       os: osString,
       browser: browserString,
+      // язык из тела, а если его нет — из заголовка Accept-Language
+      lang: resolveLang(body.lang ?? acceptLang?.split(',')[0]),
+      source: resolveSource(body.referrer),
       page: body.page,
     });
 
