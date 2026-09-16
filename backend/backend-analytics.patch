@@ -1,0 +1,110 @@
+diff --git a/backend/src/analytics/analytics.controller.ts b/backend/src/analytics/analytics.controller.ts
+index ba3aaec..b16ddc8 100644
+--- a/backend/src/analytics/analytics.controller.ts
++++ b/backend/src/analytics/analytics.controller.ts
+@@ -19,6 +19,29 @@ function resolveDeviceType(deviceType: string | undefined): string {
+   return 'Desktop'; // ua-parser-js doesn't set deviceType for desktop UAs
+ }
+ 
++// Источник перехода. Метка из ссылки (?ref=tg) и реферер сводятся к
++// понятным названиям. Из приложений Telegram/Discord реферер часто пустой,
++// поэтому явная метка в ссылке — самый надёжный сигнал.
++function resolveSource(referrer: string | undefined): string {
++  const r = (referrer ?? '').trim().toLowerCase();
++  if (!r) return 'Прямой';
++  if (['tg', 'telegram', 't.me'].some((k) => r.includes(k))) return 'Telegram';
++  if (['dc', 'discord'].some((k) => r.includes(k))) return 'Discord';
++  if (r.includes('youtu')) return 'YouTube';
++  if (r.includes('tiktok')) return 'TikTok';
++  if (r.includes('github')) return 'GitHub';
++  if (r.includes('google')) return 'Google';
++  if (r.includes('yandex')) return 'Яндекс';
++  if (r === 'vk' || r.includes('vk.com')) return 'VK';
++  return r; // незнакомый источник сохраняем как есть
++}
++
++// Язык сводим к основному тегу: "ru-RU" → "ru", "pt-BR" → "pt".
++function resolveLang(lang: string | undefined): string | null {
++  const primary = (lang ?? '').trim().toLowerCase().split(/[-_]/)[0];
++  return /^[a-z]{2,3}$/.test(primary) ? primary : null;
++}
++
+ function resolveIp(
+   forwardedFor: string | undefined,
+   realIp: string | undefined,
+@@ -46,6 +69,7 @@ export class AnalyticsController {
+     @Headers('x-vercel-ip-city') vercelCity: string | undefined,
+     @Headers('x-forwarded-for') forwardedFor: string | undefined,
+     @Headers('x-real-ip') realIp: string | undefined,
++    @Headers('accept-language') acceptLang: string | undefined,
+   ) {
+     const parser = new UAParser(userAgent ?? '');
+     const os = parser.getOS();
+@@ -64,6 +88,9 @@ export class AnalyticsController {
+       device: resolveDeviceType(device.type),
+       os: osString,
+       browser: browserString,
++      // язык из тела, а если его нет — из заголовка Accept-Language
++      lang: resolveLang(body.lang ?? acceptLang?.split(',')[0]),
++      source: resolveSource(body.referrer),
+       page: body.page,
+     });
+ 
+diff --git a/backend/src/analytics/analytics.service.ts b/backend/src/analytics/analytics.service.ts
+index fb2ec56..bc50313 100644
+--- a/backend/src/analytics/analytics.service.ts
++++ b/backend/src/analytics/analytics.service.ts
+@@ -9,6 +9,8 @@ export interface VisitInput {
+   device: string | null;
+   os: string | null;
+   browser: string | null;
++  lang: string | null;
++  source: string | null;
+   page: string;
+ }
+ 
+@@ -22,6 +24,8 @@ export interface Visit {
+   device: string | null;
+   os: string | null;
+   browser: string | null;
++  lang: string | null;
++  source: string | null;
+   page: string;
+ }
+ 
+@@ -31,8 +35,8 @@ export class AnalyticsService {
+ 
+   async createVisit(input: VisitInput): Promise<Visit> {
+     const rows = await this.sql`
+-      INSERT INTO visits (ip, country, region, city, device, os, browser, page)
+-      VALUES (${input.ip}, ${input.country}, ${input.region}, ${input.city}, ${input.device}, ${input.os}, ${input.browser}, ${input.page})
++      INSERT INTO visits (ip, country, region, city, device, os, browser, lang, source, page)
++      VALUES (${input.ip}, ${input.country}, ${input.region}, ${input.city}, ${input.device}, ${input.os}, ${input.browser}, ${input.lang}, ${input.source}, ${input.page})
+       RETURNING *
+     `;
+     return rows[0] as Visit;
+diff --git a/backend/src/analytics/dto/create-visit.dto.ts b/backend/src/analytics/dto/create-visit.dto.ts
+index 842f8cf..7bd19e0 100644
+--- a/backend/src/analytics/dto/create-visit.dto.ts
++++ b/backend/src/analytics/dto/create-visit.dto.ts
+@@ -1,7 +1,19 @@
+-import { IsString, IsNotEmpty } from 'class-validator';
++import { IsString, IsNotEmpty, IsOptional, MaxLength } from 'class-validator';
+ 
+ export class CreateVisitDto {
+   @IsString()
+   @IsNotEmpty()
+   page: string;
++
++  // источник перехода: хост реферера или метка из ссылки (?ref=tg)
++  @IsOptional()
++  @IsString()
++  @MaxLength(255)
++  referrer?: string;
++
++  // язык браузера: navigator.language, напр. "ru-RU"
++  @IsOptional()
++  @IsString()
++  @MaxLength(16)
++  lang?: string;
+ }
